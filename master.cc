@@ -2,6 +2,7 @@
 #include "osl/eval/pieceEval.h"
 #include "osl/hash/hashKey.h"
 #include "osl/misc/math.h"
+#include "osl/record/compactBoard.h"
 #include "osl/record/csa.h"
 #include "osl/record/csaRecord.h"
 #include "osl/record/kanjiPrint.h"
@@ -11,44 +12,74 @@
 #include "osl/search/simpleHashTable.h"
 #include "osl/state/numEffectState.h"
 #include "osl/stl/vector.h"
+#include <hiredis/hiredis.h>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
-#include <boost/progress.hpp>
 #include <boost/shared_ptr.hpp>
 #include <deque>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 
 namespace bp = boost::program_options;
 bp::variables_map vm;
 
+redisContext *c = NULL;
+
 typedef std::vector<osl::record::opening::WMove> WMoveContainer;
 
 osl::Player the_player = osl::BLACK;
-bool is_dump = false;
-int error_threshold = 500;
 int is_determinate = 0;	   // test only top n moves.  0 for all
 int max_depth, non_determinate_depth;
 double ratio;		   // use moves[n+1] when the weight[n+1] >= ratio*weight[n]
-bool is_quick = false;
 
-size_t state_count = 0;
 
-void showStatistics(const std::deque<int>& src)
-{
-  double sum, mean, var, dev, skew, kurt;
-  osl::misc::computeStats(src.begin(), src.end(), sum, mean, var, dev, skew, kurt);
 
-  std::cout << boost::format(" total: %g\n")  % src.size()
-            << boost::format(" mean:  %g\n") % mean
-            << boost::format(" dev:   %g\n")  % dev;
+void connectRedisServer(const std::string& host, const int port) {
+  const struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+  c = redisConnectWithTimeout(host.c_str(), port, timeout);
+  if (c->err) {
+    std::cerr << "Connection error: " << c->errstr << std::endl;
+    exit(1);
+  }
+}
+
+
+const std::string getStateKey(const osl::SimpleState& state) {
+  const osl::record::CompactBoard cb(state);
+  std::ostringstream ss;
+  ss << cb;
+  return ss.str();
+}
+
+
+bool isFinished(const std::string& state_str) {
+  redisReply *reply = (redisReply*)redisCommand(c, "EXISTS %b",
+                                                   state_str.c_str(), state_str.size());
+  if (!reply) {
+    std::cerr << "SADD error: " << c->errstr << std::endl;
+    exit(1);
+  }
+  const bool ret = (reply->integer == 1L);
+  freeReplyObject(reply);
+  return ret;
+}
+
+void appendPosition(const std::string& state_str) {
+  redisReply *reply = (redisReply*)redisCommand(c, "SADD %s %b",
+                                                   "tag:new-queue",
+                                                   state_str.c_str(), state_str.size());
+  if (!reply) {
+    std::cerr << "SADD error: " << c->errstr << std::endl;
+    exit(1);
+  }
+  freeReplyObject(reply);
 }
 
 void printUsage(std::ostream& out, 
                 char **argv,
-                const boost::program_options::options_description& command_line_options)
-{
+                const boost::program_options::options_description& command_line_options) {
   out <<
     "Usage: " << argv[0] << " [options] <a_joseki_file.dat>\n"
       << command_line_options 
@@ -56,8 +87,7 @@ void printUsage(std::ostream& out,
 }
 
 
-void doMain(const std::string& file_name)
-{
+void doMain(const std::string& file_name) {
   osl::record::KanjiPrint printer(std::cerr, 
                                   boost::shared_ptr<osl::record::Characters>(
                                             new osl::record::KIFCharacters())
@@ -70,7 +100,6 @@ void doMain(const std::string& file_name)
     std::cout << boost::format("Total states: %d\n") % book.getTotalState();
   bool states[book.getTotalState()]; // mark states that have been visited.
   memset(states, 0, sizeof(bool) * book.getTotalState());
-  boost::progress_display progress(book.getTotalState());
 
   typedef std::pair<int, int> state_depth_t;
   osl::stl::vector<state_depth_t> stateToVisit;
@@ -83,7 +112,6 @@ void doMain(const std::string& file_name)
 
   typedef std::pair<int, int> eval_depth_t;
   std::deque<eval_depth_t> evals;
-  long finishing_games = 0;
 
   while (!stateToVisit.empty()) {
     const state_depth_t state_depth = stateToVisit.back();
@@ -93,9 +121,13 @@ void doMain(const std::string& file_name)
     const int depth      = state_depth.second;
     stateToVisit.pop_back();
     states[stateIndex] = true;
-    ++progress;
 
     /* この局面を処理する */
+    const osl::SimpleState state(book.getBoard(stateIndex));
+    const std::string state_str = getStateKey(state);
+    if (!isFinished(state_str)) {
+      appendPosition(state_str);
+    }
 
     WMoveContainer moves = book.getMoves(stateIndex);
     std::sort(moves.begin(), moves.end(), osl::record::opening::WMoveSort());
@@ -161,8 +193,8 @@ int main(int argc, char **argv)
 {
   std::string player_str;
   std::string file_name;
-  size_t csa_move_index;
-  std::string csa_file_name;
+  std::string radis_server_host = "127.0.0.1";
+  int radis_server_port = 6379;
 
   bp::options_description command_line_options;
   command_line_options.add_options()
@@ -171,43 +203,33 @@ int main(int argc, char **argv)
      "default black.")
     ("input-file,f", bp::value<std::string>(&file_name)->default_value("./joseki.dat"),
      "a joseki file to validate.")
-    ("dump", bp::value<bool>(&is_dump)->default_value(false),
-     "dump finishing games' states")
-    ("threshold", bp::value<int>(&error_threshold)->default_value(500),
-     "threshold of evaluatoin value to recognize a finishing game.")
     ("determinate", bp::value<int>(&is_determinate)->default_value(0),
      "only search the top n moves.  (0 for all,  1 for determinate).")
     ("non-determinate-depth", bp::value<int>(&non_determinate_depth)->default_value(100),
      "use the best move where the depth is greater than this value")
     ("max-depth", bp::value<int>(&max_depth)->default_value(100),
      "do not go beyond this depth from the root")
+    ("radis-host", bp::value<std::string>(&radis_server_host)->default_value(radis_server_host),
+     "IP of the radis server")
+    ("radis-port", bp::value<int>(&radis_server_port)->default_value(radis_server_port),
+     "port number of the radis server")
     ("ratio", bp::value<double>(&ratio)->default_value(0.0),
      "skip move[i] (i >= n), if weight[n] < weight[n-1]*ratio")
-    ("csa-move", bp::value<size_t>(&csa_move_index)->default_value(1),
-     "n-th-move state in the csa file")
-    ("csa", bp::value<std::string>(&csa_file_name)->default_value(""),
-     "a csa file name. See if a state in the game exists in the book or not.")
-    ("quick", bp::value<bool>(&is_quick)->default_value(false),
-     "skip quiescence search.")
     ("verbose,v", "output verbose messages.")
     ("help,h", "show this help message.");
   bp::positional_options_description p;
   p.add("input-file", 1);
 
-  try
-  {
+  try {
     bp::store(
       bp::command_line_parser(
 	argc, argv).options(command_line_options).positional(p).run(), vm);
     bp::notify(vm);
-    if (vm.count("help"))
-    {
+    if (vm.count("help")) {
       printUsage(std::cout, argv, command_line_options);
       return 0;
     }
-  }
-  catch (std::exception &e)
-  {
+  } catch (std::exception &e) {
     std::cerr << "error in parsing options\n"
 	      << e.what() << std::endl;
     printUsage(std::cerr, argv, command_line_options);
@@ -218,31 +240,14 @@ int main(int argc, char **argv)
     the_player = osl::BLACK;
   else if (player_str == "white")
     the_player = osl::WHITE;
-  else
-  {
+  else {
     printUsage(std::cerr, argv, command_line_options);
     return 1;
   }
 
-  if (!csa_file_name.empty())
-  {
-    is_quick = true;
-    const osl::record::csa::CsaFile csa(csa_file_name);
-    const osl::record::Record record = csa.getRecord();
-    const osl::stl::vector<osl::Move> moves = record.getMoves();
-    const osl::SimpleState initialState = record.getInitialState();
-
-    if (csa_move_index < 1) csa_move_index = 1;
-    if (csa_move_index > moves.size()) csa_move_index = moves.size();
-    if ( (the_player == osl::BLACK && csa_move_index%2 == 0) ||
-         (the_player == osl::WHITE && csa_move_index%2 == 1) )
-    {
-      std::cout << "Invalid csa move index: " << csa_move_index << std::endl;
-      return -1;
-    }
-  }
-
+  connectRedisServer(radis_server_host, radis_server_port);
   doMain(file_name);
+  redisFree(c);
 
   return 0;
 }

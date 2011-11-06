@@ -17,7 +17,8 @@ PROF = $(PROFILE_FLAGS)
 LDFLAGS += $(PROF)
 endif
 
-LOADLIBES += -lboost_thread$(BOOST_POSTFIX_MT) -lboost_program_options$(BOOST_POSTFIX) -lpthread
+LOADLIBES += -lhiredis \
+	     -lboost_thread$(BOOST_POSTFIX_MT) -lboost_program_options$(BOOST_POSTFIX) -lpthread
 
 ## #gcc
 OTHERFLAGS = -pipe $(CPUOPTION)

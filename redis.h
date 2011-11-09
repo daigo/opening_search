@@ -1,0 +1,1 @@
+#include <hiredis/hiredis.h>#include <string>void connectRedisServer(redisContext **c, const std::string& host, const int port);

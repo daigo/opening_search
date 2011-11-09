@@ -1,3 +1,4 @@
+#include "redis.h"
 #include "osl/move.h"
 #include "osl/eval/pieceEval.h"
 #include "osl/hash/hashKey.h"
@@ -34,16 +35,6 @@ int is_determinate = 0;	   // test only top n moves.  0 for all
 int max_depth, non_determinate_depth;
 double ratio;		   // use moves[n+1] when the weight[n+1] >= ratio*weight[n]
 
-
-
-void connectRedisServer(const std::string& host, const int port) {
-  const struct timeval timeout = { 1, 500000 }; // 1.5 seconds
-  c = redisConnectWithTimeout(host.c_str(), port, timeout);
-  if (c->err) {
-    std::cerr << "Connection error: " << c->errstr << std::endl;
-    exit(1);
-  }
-}
 
 
 const std::string getStateKey(const osl::SimpleState& state) {
@@ -245,7 +236,9 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  connectRedisServer(radis_server_host, radis_server_port);
+  connectRedisServer(&c, radis_server_host, radis_server_port);
+  if (!c)
+    exit(1);
   doMain(file_name);
   redisFree(c);
 

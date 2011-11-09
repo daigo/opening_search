@@ -10,7 +10,7 @@ endif
 #
 all:
 	$(MAKE) programs
-programs: master
+programs: master client
 
 ifdef PROFILE
 PROF = $(PROFILE_FLAGS)
@@ -38,7 +38,7 @@ endif
 
 CXXFLAGS = $(PROF) $(OTHERFLAGS) $(CXXOPTFLAGS) $(WARNING_FLAGS) $(INCLUDES)
 
-PROGRAM_SRCS = master.cc
+PROGRAM_SRCS = master.cc client.cc
 SRCS = $(PROGRAM_SRCS) 
 OBJS = $(patsubst %.cc,%.o,$(SRCS))
 
@@ -46,7 +46,9 @@ CC = $(CXX)
 PROGRAMS = $(PROGRAM_SRCS:.cc=)
 OSL_HOME_FLAGS = -DOSL_HOME=\"$(shell dirname `dirname \`pwd\``)/osl\"
 
-master: $(FILE_OSL_ALL)
+master: $(FILE_OSL_ALL) redis.o
+
+client: $(FILE_OSL_ALL) redis.o
 
 clean:
 	-rm *.o $(PROGRAMS)

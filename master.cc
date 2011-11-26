@@ -14,6 +14,7 @@
 #include "osl/state/numEffectState.h"
 #include "osl/stl/vector.h"
 #include <hiredis/hiredis.h>
+#include <glog/logging.h>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
 #include <boost/shared_ptr.hpp>
@@ -46,26 +47,22 @@ const std::string getStateKey(const osl::SimpleState& state) {
 
 
 bool isFinished(const std::string& state_str) {
-  redisReply *reply = (redisReply*)redisCommand(c, "EXISTS %b",
-                                                   state_str.c_str(), state_str.size());
-  if (!reply) {
-    std::cerr << "SADD error: " << c->errstr << std::endl;
+  redisReplyPtr reply((redisReply*)redisCommand(c, "EXISTS %b",
+                                                state_str.c_str(), state_str.size()),
+                      freeRedisReply);
+  if (checkRedisReply(reply))
     exit(1);
-  }
+
   const bool ret = (reply->integer == 1L);
-  freeReplyObject(reply);
   return ret;
 }
 
 void appendPosition(const std::string& state_str) {
-  redisReply *reply = (redisReply*)redisCommand(c, "SADD %s %b",
-                                                   "tag:new-queue",
-                                                   state_str.c_str(), state_str.size());
-  if (!reply) {
-    std::cerr << "SADD error: " << c->errstr << std::endl;
+  redisReplyPtr reply((redisReply*)redisCommand(c, "SADD %s %b", "tag:new-queue",
+                                                state_str.c_str(), state_str.size()),
+                      freeRedisReply);
+  if (checkRedisReply(reply))
     exit(1);
-  }
-  freeReplyObject(reply);
 }
 
 void printUsage(std::ostream& out, 
@@ -79,24 +76,17 @@ void printUsage(std::ostream& out,
 
 
 void doMain(const std::string& file_name) {
-  osl::record::KanjiPrint printer(std::cerr, 
-                                  boost::shared_ptr<osl::record::Characters>(
-                                            new osl::record::KIFCharacters())
-                                  );
-  if (vm.count("verbose"))
-    std::cout << boost::format("Opening... %s\n ") % file_name;
+  LOG(INFO) << boost::format("Opening... %s") % file_name;
   osl::record::opening::WeightedBook book(file_name.c_str());
 
-  if (vm.count("verbose"))
-    std::cout << boost::format("Total states: %d\n") % book.getTotalState();
+  LOG(INFO) << boost::format("Total states: %d") % book.getTotalState();
   bool states[book.getTotalState()]; // mark states that have been visited.
-  memset(states, 0, sizeof(bool) * book.getTotalState());
+  memset(states, 0, sizeof(states));
 
   typedef std::pair<int, int> state_depth_t;
   osl::stl::vector<state_depth_t> stateToVisit;
 
-  if (vm.count("verbose"))
-    std::cout << boost::format("Start index: %d\n)") % book.getStartState();
+  LOG(INFO) << boost::format("Start index: %d") % book.getStartState();
   stateToVisit.push_back(state_depth_t(book.getStartState(), 1)); // root is 1
   // depth-1手目からdepth手目のstate。depth手目はまだ指されていない（これか
   // らdepth手目）
@@ -106,8 +96,7 @@ void doMain(const std::string& file_name) {
 
   while (!stateToVisit.empty()) {
     const state_depth_t state_depth = stateToVisit.back();
-    if (vm.count("verbose"))
-      std::cout << boost::format("Visiting... %d\n") % state_depth.first;
+    LOG(INFO) << boost::format("Visiting... %d") % state_depth.first;
     const int stateIndex = state_depth.first;
     const int depth      = state_depth.second;
     stateToVisit.pop_back();
@@ -116,15 +105,14 @@ void doMain(const std::string& file_name) {
     /* この局面を処理する */
     const osl::SimpleState state(book.getBoard(stateIndex));
     const std::string state_str = getStateKey(state);
-    if (!isFinished(state_str)) {
+    //if (!isFinished(state_str)) {
       appendPosition(state_str);
-    }
+    //}
 
     WMoveContainer moves = book.getMoves(stateIndex);
     std::sort(moves.begin(), moves.end(), osl::record::opening::WMoveSort());
 
-    if (vm.count("verbose"))
-      std::cout << boost::format("  #moves... %d\n") % moves.size();
+    LOG(INFO) << boost::format("  #moves... %d\n") % moves.size();
     
     // 自分（the_player）の手番では、良い手のみ指す
     // 相手はどんな手を指してくるか分からない
@@ -187,6 +175,10 @@ int main(int argc, char **argv)
   std::string radis_server_host = "127.0.0.1";
   int radis_server_port = 6379;
 
+  /* Set up logging */
+  FLAGS_log_dir = ".";
+  google::InitGoogleLogging(argv[0]);
+
   bp::options_description command_line_options;
   command_line_options.add_options()
     ("player,p", bp::value<std::string>(&player_str)->default_value("black"),
@@ -237,11 +229,14 @@ int main(int argc, char **argv)
   }
 
   connectRedisServer(&c, radis_server_host, radis_server_port);
-  if (!c)
+  if (!c) {
+    LOG(FATAL) << "Failed to connect to the Redis server";
     exit(1);
-  doMain(file_name);
-  redisFree(c);
+  }
 
+  doMain(file_name);
+
+  redisFree(c);
   return 0;
 }
 // ;;; Local Variables:

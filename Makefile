@@ -17,7 +17,7 @@ PROF = $(PROFILE_FLAGS)
 LDFLAGS += $(PROF)
 endif
 
-LOADLIBES += -lhiredis \
+LOADLIBES += -lhiredis -lglog \
 	     -lboost_thread$(BOOST_POSTFIX_MT) -lboost_program_options$(BOOST_POSTFIX) -lpthread
 
 ## #gcc

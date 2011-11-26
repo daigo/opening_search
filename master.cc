@@ -105,9 +105,9 @@ void doMain(const std::string& file_name) {
     /* この局面を処理する */
     const osl::SimpleState state(book.getBoard(stateIndex));
     const std::string state_str = getStateKey(state);
-    //if (!isFinished(state_str)) {
+    if (state.turn() == the_player) {
       appendPosition(state_str);
-    //}
+    }
 
     WMoveContainer moves = book.getMoves(stateIndex);
     std::sort(moves.begin(), moves.end(), osl::record::opening::WMoveSort());
@@ -232,15 +232,15 @@ int main(int argc, char **argv)
   }
 
   connectRedisServer(&c, redis_server_host, redis_server_port);
+  if (!c) {
+    LOG(FATAL) << "Failed to connect to the Redis server";
+    exit(1);
+  }
   if (!redis_password.empty()) {
     if (!authenticate(c, redis_password)) {
       LOG(FATAL) << "Failed to authenticate to the Redis server";
       exit(1);
     }
-  }
-  if (!c) {
-    LOG(FATAL) << "Failed to connect to the Redis server";
-    exit(1);
   }
 
   doMain(file_name);

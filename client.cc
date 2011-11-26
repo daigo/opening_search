@@ -12,6 +12,7 @@
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -50,27 +51,32 @@ struct SearchResult {
       depth(0), score(0), timestamp(time(NULL))
   {}
 
-  const std::string toString() {
-    std::ostringstream out;
-    out << ":depth "     << depth <<
-           " :score "     << score <<
-           " :consumed "  << consumed_seconds <<
-           " :pv "        << pv <<
-           " :timestamp " << timestamp
-           << std::endl;
-    return out.str();
-  }
+  const std::string toString() const;
 };
 
+const std::string
+SearchResult::toString() const
+{
+  std::ostringstream out;
+  out << ":depth "      << depth <<
+         " :score "     << score <<
+         " :consumed "  << consumed_seconds <<
+         " :pv "        << pv <<
+         " :timestamp " << timestamp
+         << std::endl;
+  return out.str();
+}
 
-const std::string compactBoardToString(const osl::record::CompactBoard& cb) {
+const std::string compactBoardToString(const osl::record::CompactBoard& cb)
+{
   std::ostringstream ss;
   ss << cb;
   return ss.str();
 }
 
 
-void search(const osl::NumEffectState& src, SearchResult& sr) {
+void search(const osl::NumEffectState& src, SearchResult& sr)
+{
   osl::game_playing::AlphaBeta2OpenMidEndingEvalPlayer player;
   player.setNextIterationCoefficient(3.0);
   player.setVerbose(verbose);
@@ -101,7 +107,8 @@ void search(const osl::NumEffectState& src, SearchResult& sr) {
 }
 
 
-int getQueueLength() {
+int getQueueLength()
+{
   redisReplyPtr reply((redisReply*)redisCommand(c, "SCARD %s", "tag:new-queue"),
                       freeRedisReply);
   if (checkRedisReply(reply))
@@ -112,7 +119,8 @@ int getQueueLength() {
 }
 
 
-int popPosition(osl::record::CompactBoard& cb) {
+int popPosition(osl::record::CompactBoard& cb)
+{
   redisReplyPtr reply((redisReply*)redisCommand(c, "SPOP %s", "tag:new-queue"),
                       freeRedisReply);
   if (checkRedisReply(reply))
@@ -130,7 +138,8 @@ int popPosition(osl::record::CompactBoard& cb) {
 }
 
 
-int setResult(const SearchResult& sr) {
+int setResult(const SearchResult& sr)
+{
   const std::string key = compactBoardToString(sr.board);
   redisReplyPtr reply((redisReply*)redisCommand(c, "HMSET %b depth %d score %d consumed %d pv %b timestamp %d",
                                                 key.c_str(), key.size(),
@@ -140,11 +149,7 @@ int setResult(const SearchResult& sr) {
                                                 sr.pv.c_str(), sr.pv.size(),
                                                 sr.timestamp),
                       freeRedisReply);
-  LOG(INFO) << ":depth " << sr.depth <<
-               " :score " << sr.score <<
-               " :consumed " << sr.consumed_seconds <<
-               " :pv " << sr.pv <<
-               " :timestamp " << sr.timestamp;
+  LOG(INFO) << sr.toString();
   if (checkRedisReply(reply))
     exit(1);
 
@@ -152,7 +157,8 @@ int setResult(const SearchResult& sr) {
 }
 
 
-int getResult(SearchResult& sr) {
+int getResult(SearchResult& sr)
+{
   const std::string key = compactBoardToString(sr.board);
   redisReplyPtr reply((redisReply*)redisCommand(c, "HGETALL %b", key.c_str(), key.size()),
                       freeRedisReply);
@@ -198,7 +204,8 @@ int getResult(SearchResult& sr) {
 }
 
 
-bool exist(const osl::record::CompactBoard& cb) {
+bool exist(const osl::record::CompactBoard& cb)
+{
   const std::string key = compactBoardToString(cb);
   redisReplyPtr reply((redisReply*)redisCommand(c, "EXISTS %b", key.c_str(), key.size()),
                       freeRedisReply);
@@ -209,7 +216,8 @@ bool exist(const osl::record::CompactBoard& cb) {
 }
 
 
-int doPosition() {
+int doPosition()
+{
   osl::record::CompactBoard cb;
   if (popPosition(cb)) {
     return 1;
@@ -243,9 +251,23 @@ int doPosition() {
   return 0;
 }
 
+bool isStopFileExist()
+{
+  bool ret = false;
+  std::ifstream fin;
+  fin.open("stop");
+  ret = fin.is_open();
+  fin.close();
+  
+  if (ret) {
+    LOG(INFO) << "Found the stop file";
+  }
+  return ret;
+}
 
-void doMain() {
-  while (true) {
+void doMain()
+{
+  while (!isStopFileExist()) {
     LOG(INFO) << ">>> Queue length: " << getQueueLength();
     if (doPosition())
       sleep(10);
@@ -255,7 +277,8 @@ void doMain() {
 
 void printUsage(std::ostream& out, 
                 char **argv,
-                const boost::program_options::options_description& command_line_options) {
+                const boost::program_options::options_description& command_line_options)
+{
   out <<
     "Usage: " << argv[0] << " [options]\n"
       << command_line_options 
@@ -264,8 +287,9 @@ void printUsage(std::ostream& out,
 
 int main(int argc, char **argv)
 {
-  std::string radis_server_host = "127.0.0.1";
-  int radis_server_port = 6379;
+  std::string redis_server_host = "127.0.0.1";
+  int redis_server_port = 6379;
+  std::string redis_password;
 
   /* Set up logging */
   FLAGS_log_dir = ".";
@@ -276,10 +300,12 @@ int main(int argc, char **argv)
   command_line_options.add_options()
     ("depth", bp::value<int>(&depth)->default_value(depth),
      "depth to search")
-    ("radis-host", bp::value<std::string>(&radis_server_host)->default_value(radis_server_host),
-     "IP of the radis server")
-    ("radis-port", bp::value<int>(&radis_server_port)->default_value(radis_server_port),
-     "port number of the radis server")
+    ("redis-host", bp::value<std::string>(&redis_server_host)->default_value(redis_server_host),
+     "IP of the redis server")
+    ("redis-password", bp::value<std::string>(&redis_password)->default_value(redis_password),
+     "password to connect to the redis server")
+    ("redis-port", bp::value<int>(&redis_server_port)->default_value(redis_server_port),
+     "port number of the redis server")
     ("verbose,v",  bp::value<int>(&verbose)->default_value(verbose),
      "output verbose messages.")
     ("help,h", "show this help message.");
@@ -303,10 +329,16 @@ int main(int argc, char **argv)
   }
 
   /* Connect to the Redis server */
-  connectRedisServer(&c, radis_server_host, radis_server_port);
+  connectRedisServer(&c, redis_server_host, redis_server_port);
   if (!c) {
     LOG(FATAL) << "Failed to connect to the Redis server";
     exit(1);
+  }
+  if (!redis_password.empty()) {
+    if (!authenticate(c, redis_password)) {
+      LOG(FATAL) << "Failed to authenticate to the Redis server";
+      exit(1);
+    }
   }
 
   /* Set up OSL */

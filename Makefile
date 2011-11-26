@@ -50,9 +50,9 @@ master: $(FILE_OSL_ALL) redis.o
 
 client: $(FILE_OSL_ALL) redis.o
 
-clean:
+clean: light-clean
 	-rm *.o $(PROGRAMS)
-	-rm -rf .deps
+	-rm -f core
 
 light-clean:
 	-rm -rf .deps .objs .gch 

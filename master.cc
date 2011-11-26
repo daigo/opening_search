@@ -172,8 +172,9 @@ int main(int argc, char **argv)
 {
   std::string player_str;
   std::string file_name;
-  std::string radis_server_host = "127.0.0.1";
-  int radis_server_port = 6379;
+  std::string redis_server_host = "127.0.0.1";
+  int redis_server_port = 6379;
+  std::string redis_password;
 
   /* Set up logging */
   FLAGS_log_dir = ".";
@@ -192,10 +193,12 @@ int main(int argc, char **argv)
      "use the best move where the depth is greater than this value")
     ("max-depth", bp::value<int>(&max_depth)->default_value(100),
      "do not go beyond this depth from the root")
-    ("radis-host", bp::value<std::string>(&radis_server_host)->default_value(radis_server_host),
-     "IP of the radis server")
-    ("radis-port", bp::value<int>(&radis_server_port)->default_value(radis_server_port),
-     "port number of the radis server")
+    ("redis-host", bp::value<std::string>(&redis_server_host)->default_value(redis_server_host),
+     "IP of the redis server")
+    ("redis-password", bp::value<std::string>(&redis_password)->default_value(redis_password),
+     "password to connect to the redis server")
+    ("redis-port", bp::value<int>(&redis_server_port)->default_value(redis_server_port),
+     "port number of the redis server")
     ("ratio", bp::value<double>(&ratio)->default_value(0.0),
      "skip move[i] (i >= n), if weight[n] < weight[n-1]*ratio")
     ("verbose,v", "output verbose messages.")
@@ -228,7 +231,13 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  connectRedisServer(&c, radis_server_host, radis_server_port);
+  connectRedisServer(&c, redis_server_host, redis_server_port);
+  if (!redis_password.empty()) {
+    if (!authenticate(c, redis_password)) {
+      LOG(FATAL) << "Failed to authenticate to the Redis server";
+      exit(1);
+    }
+  }
   if (!c) {
     LOG(FATAL) << "Failed to connect to the Redis server";
     exit(1);

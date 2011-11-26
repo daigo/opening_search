@@ -20,17 +20,20 @@ bool authenticate(redisContext *c, const std::string& password) {
     exit(1);
   assert(reply->type == REDIS_REPLY_STATUS);
   const std::string ret(reply->str);
-  return "+OK" == ret;
+  DLOG(INFO) << "autenticated: " << ret;
+  return "OK" == ret;
 }
 
 
 void freeRedisReply(redisReply *reply) {
+  assert(reply);
   freeReplyObject(reply);
 }
 
 int checkRedisReply(const redisReplyPtr& reply) {
   assert(reply);
   if (reply->type == REDIS_REPLY_ERROR) {
+    assert(reply->str);
     LOG(ERROR) << reply->str;
     return 1;
   }

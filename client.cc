@@ -1,4 +1,5 @@
 #include "redis.h"
+#include "searchResult.h"
 #include "osl/eval/ml/openMidEndingEval.h"
 #include "osl/game_playing/alphaBetaPlayer.h"
 #include "osl/game_playing/gameState.h"
@@ -10,7 +11,6 @@
 #include <hiredis/hiredis.h>
 #include <glog/logging.h>
 #include <boost/format.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
 #include <fstream>
 #include <iostream>
@@ -37,43 +37,6 @@ int verbose = 2;
 /**
  * Functions
  */
-
-struct SearchResult {
-  osl::record::CompactBoard board;
-  int depth;
-  int score;            // evaluation value
-  int consumed_seconds; // actual seconds consumed by thinking.
-  time_t timestamp;     // current time stamp as seconds from Epoch.
-  std::string pv;
-
-  SearchResult(const osl::record::CompactBoard& _board)
-    : board(_board),
-      depth(0), score(0), timestamp(time(NULL))
-  {}
-
-  const std::string toString() const;
-};
-
-const std::string
-SearchResult::toString() const
-{
-  std::ostringstream out;
-  out << ":depth "      << depth <<
-         " :score "     << score <<
-         " :consumed "  << consumed_seconds <<
-         " :pv "        << pv <<
-         " :timestamp " << timestamp
-         << std::endl;
-  return out.str();
-}
-
-const std::string compactBoardToString(const osl::record::CompactBoard& cb)
-{
-  std::ostringstream ss;
-  ss << cb;
-  return ss.str();
-}
-
 
 void search(const osl::NumEffectState& src, SearchResult& sr)
 {
@@ -157,52 +120,6 @@ int setResult(const SearchResult& sr)
 }
 
 
-int getResult(SearchResult& sr)
-{
-  const std::string key = compactBoardToString(sr.board);
-  redisReplyPtr reply((redisReply*)redisCommand(c, "HGETALL %b", key.c_str(), key.size()),
-                      freeRedisReply);
-  if (checkRedisReply(reply))
-    exit(1);
-  assert(reply->type == REDIS_REPLY_ARRAY);
-
-  if (reply->elements == 0) {
-    LOG(ERROR) << "Found a position without any fields";
-    return 1;
-  }
-
-  for(size_t i=0; i<reply->elements; /*empty*/) {
-    const redisReply *r = reply->element[i++];
-    assert(r->type == REDIS_REPLY_STRING);
-    const std::string field(r->str);
-    if ("depth" == field) {
-      const redisReply *r = reply->element[i++];
-      assert(r->type == REDIS_REPLY_STRING);
-      sr.depth = boost::lexical_cast<int>(r->str);
-    } else if ("score" == field) {
-      const redisReply *r = reply->element[i++];
-      assert(r->type == REDIS_REPLY_STRING);
-      sr.score = boost::lexical_cast<int>(r->str);
-    } else if ("consumed" == field) {
-      const redisReply *r = reply->element[i++];
-      assert(r->type == REDIS_REPLY_STRING);
-      sr.consumed_seconds = boost::lexical_cast<int>(r->str);
-    } else if ("pv" == field) {
-      const redisReply *r = reply->element[i++];
-      assert(r->type == REDIS_REPLY_STRING);
-      sr.pv.assign(r->str);
-    } else if ("timestamp" == field) {
-      const redisReply *r = reply->element[i++];
-      assert(r->type == REDIS_REPLY_STRING);
-      sr.timestamp = boost::lexical_cast<int>(r->str);
-    } else {
-      LOG(WARNING) << "unknown field found: " << field;
-    }
-  }
-
-  return 0;
-}
-
 
 bool exist(const osl::record::CompactBoard& cb)
 {
@@ -226,7 +143,7 @@ int doPosition()
   if (exist(cb)) {
     DLOG(INFO) << "Found an exisiting key (board)...";
     SearchResult sr(cb);
-    if (!getResult(sr)) {
+    if (!querySearchResult(c, sr)) {
       if (sr.depth >= depth) {
         DLOG(INFO) << "  do not override";
         return 0;

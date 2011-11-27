@@ -10,7 +10,7 @@ endif
 #
 all:
 	$(MAKE) programs
-programs: master client
+programs: master client histogram
 
 ifdef PROFILE
 PROF = $(PROFILE_FLAGS)
@@ -48,7 +48,9 @@ OSL_HOME_FLAGS = -DOSL_HOME=\"$(shell dirname `dirname \`pwd\``)/osl\"
 
 master: $(FILE_OSL_ALL) redis.o
 
-client: $(FILE_OSL_ALL) redis.o
+client: $(FILE_OSL_ALL) redis.o searchResult.o
+
+histogram: $(FILE_OSL_ALL) redis.o searchResult.o
 
 clean: light-clean
 	-rm *.o $(PROGRAMS)

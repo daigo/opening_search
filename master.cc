@@ -46,6 +46,21 @@ const std::string getStateKey(const osl::SimpleState& state) {
 }
 
 
+void setupServer(osl::Player player) {
+  std::string key;
+  if (player == osl::BLACK) {
+    key = "DEL tag:black-positions";
+  } else {
+    key = "DEL tag:white-positions";
+  }
+  assert(!key.empty());
+  redisReplyPtr reply((redisReply*)redisCommand(c, key.c_str()),
+                      freeRedisReply);
+  if (checkRedisReply(reply))
+    exit(1);
+}
+
+
 bool isFinished(const std::string& state_str) {
   redisReplyPtr reply((redisReply*)redisCommand(c, "EXISTS %b",
                                                 state_str.c_str(), state_str.size()),
@@ -57,13 +72,17 @@ bool isFinished(const std::string& state_str) {
   return ret;
 }
 
-void appendPosition(const std::string& state_str) {
-  redisReplyPtr reply((redisReply*)redisCommand(c, "SADD %s %b", "tag:new-queue",
-                                                state_str.c_str(), state_str.size()),
-                      freeRedisReply);
-  if (checkRedisReply(reply))
-    exit(1);
+
+int appendPosition(osl::Player player, const std::string& state_str) {
+  redisAppendCommand(c, "SADD %s %b", "tag:new-queue", state_str.c_str(), state_str.size());
+  if (player == osl::BLACK) {
+    redisAppendCommand(c, "SADD %s %b", "tag:black-positions", state_str.c_str(), state_str.size());
+  } else {
+    redisAppendCommand(c, "SADD %s %b", "tag:white-positions", state_str.c_str(), state_str.size());
+  }
+  return 2; // two commands
 }
+
 
 void printUsage(std::ostream& out, 
                 char **argv,
@@ -83,6 +102,8 @@ void doMain(const std::string& file_name) {
   bool states[book.getTotalState()]; // mark states that have been visited.
   memset(states, 0, sizeof(states));
 
+  setupServer(the_player);
+
   typedef std::pair<int, int> state_depth_t;
   osl::stl::vector<state_depth_t> stateToVisit;
 
@@ -93,6 +114,9 @@ void doMain(const std::string& file_name) {
 
   typedef std::pair<int, int> eval_depth_t;
   std::deque<eval_depth_t> evals;
+
+  /* Append positions to the server in the pipelined mode */
+  int counter = 0;
 
   while (!stateToVisit.empty()) {
     const state_depth_t state_depth = stateToVisit.back();
@@ -107,7 +131,7 @@ void doMain(const std::string& file_name) {
     const std::string state_str = getStateKey(state);
     if (state.turn() == osl::alt(the_player)) {
       // 黒の定跡（手）を調べたい -> 白手番の局面
-      appendPosition(state_str);
+      counter += appendPosition(the_player, state_str);
     }
 
     WMoveContainer moves = book.getMoves(stateIndex);
@@ -166,6 +190,17 @@ void doMain(const std::string& file_name) {
 	stateToVisit.push_back(state_depth_t(nextIndex, depth+1));
     } // each wmove
   } // while loop
+
+  /* check results */
+  for (int i=0; i<counter; ++i) {
+    void *r;
+    redisGetReply(c, &r);
+    redisReplyPtr reply((redisReply*)r, freeRedisReply);
+    assert(reply->type == REDIS_REPLY_INTEGER);
+    assert(0 <= reply->integer);
+    assert(reply->integer < 2);
+  }
+  LOG(INFO) << "Processed positions: " << counter/2;
 }
 
 

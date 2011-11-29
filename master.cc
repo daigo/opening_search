@@ -105,7 +105,8 @@ void doMain(const std::string& file_name) {
     /* この局面を処理する */
     const osl::SimpleState state(book.getBoard(stateIndex));
     const std::string state_str = getStateKey(state);
-    if (state.turn() == the_player) {
+    if (state.turn() == osl::alt(the_player)) {
+      // 黒の定跡（手）を調べたい -> 白手番の局面
       appendPosition(state_str);
     }
 

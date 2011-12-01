@@ -19,12 +19,17 @@
 
 namespace bp = boost::program_options;
 bp::variables_map vm;
+osl::Player the_player = osl::BLACK;
+std::string the_player_str = "black";
+int depth = 900;
 
 redisContext *c = NULL;
 
 void getAllBoards(std::vector<osl::record::CompactBoard>& boards)
 {
-  redisReplyPtr reply((redisReply*)redisCommand(c, "KEYS *", freeRedisReply));
+  const std::string key = "tag:" + the_player_str + "-positions";
+  redisReplyPtr reply((redisReply*)redisCommand(c, "SMEMBERS %s", key.c_str(),
+                                                freeRedisReply));
   if (checkRedisReply(reply))
     exit(1);
   assert(reply->type == REDIS_REPLY_ARRAY);
@@ -39,14 +44,13 @@ void getAllBoards(std::vector<osl::record::CompactBoard>& boards)
   for(size_t i=0; i<reply->elements; ++i) {
     const redisReply *r = reply->element[i];
     assert(r->type == REDIS_REPLY_STRING);
-    if (r->len == 41*4) {
-      const std::string key(r->str, r->len);
-      std::stringstream ss;
-      ss << key;
-      osl::record::CompactBoard cb;
-      ss >> cb;
-      boards.push_back(cb);
-    }
+    assert(r->len == 41*4);
+    const std::string key(r->str, r->len);
+    std::stringstream ss;
+    ss << key;
+    osl::record::CompactBoard cb;
+    ss >> cb;
+    boards.push_back(cb);
   }
 }
 
@@ -60,11 +64,9 @@ void dump(std::ostream& out,
   /* Rows */
   BOOST_FOREACH(const SearchResult& sr, results) {
     const osl::SimpleState state = sr.board.getState();
-    if (state.turn() != player)
-      continue;
-
-    DLOG(INFO) << sr.toString();
-    if (sr.depth >= 1600) {
+    /* Filter results */
+    if (sr.depth >= depth) {
+      DLOG(INFO) << sr.toString();
       out << sr.score << std::endl;
     }
   }  
@@ -86,14 +88,9 @@ void doMain()
     querySearchResult(c, results);
   }
 
-  { /* BLACK */
-    std::ofstream out("out_black.csv", std::ios_base::trunc);
-    dump(out, results, osl::BLACK);
-  }
-  { /* WHITE */
-    std::ofstream out("out_white.csv", std::ios_base::trunc);
-    dump(out, results, osl::WHITE);
-  }
+  const std::string file_name = "out_" + the_player_str + ".csv";
+  std::ofstream out(file_name.c_str(), std::ios_base::trunc);
+  dump(out, results, the_player);
 }
 
 void printUsage(std::ostream& out, 
@@ -119,6 +116,10 @@ int main(int argc, char **argv)
   /* Parse command line options */
   bp::options_description command_line_options;
   command_line_options.add_options()
+    ("depth", bp::value<int>(&depth)->default_value(depth),
+     "depth to filter")
+    ("player,p", bp::value<std::string>(&the_player_str)->default_value(the_player_str),
+     "specify a player, black or white.")
     ("redis-host", bp::value<std::string>(&redis_server_host)->default_value(redis_server_host),
      "IP of the redis server")
     ("redis-password", bp::value<std::string>(&redis_password)->default_value(redis_password),
@@ -140,6 +141,15 @@ int main(int argc, char **argv)
   } catch (std::exception &e) {
     std::cerr << "error in parsing options\n"
 	      << e.what() << std::endl;
+    printUsage(std::cerr, argv, command_line_options);
+    return 1;
+  }
+
+  if (the_player_str == "black")
+    the_player = osl::BLACK;
+  else if (the_player_str == "white")
+    the_player = osl::WHITE;
+  else {
     printUsage(std::cerr, argv, command_line_options);
     return 1;
   }

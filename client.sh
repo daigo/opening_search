@@ -14,5 +14,5 @@ do
                 --redis-port ${GPS_REDIS_PORT:?GPS_REDIS_PORT not found} \
                 --redis-password ${GPS_REDIS_PASSWORD:?GPS_REDIS_PASSWORD not found} \
                 -v 0 \
-                --depth 1600 &
+                --depth 1400 &
 done

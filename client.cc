@@ -120,19 +120,6 @@ int setResult(const SearchResult& sr)
 }
 
 
-
-bool exist(const osl::record::CompactBoard& cb)
-{
-  const std::string key = compactBoardToString(cb);
-  redisReplyPtr reply((redisReply*)redisCommand(c, "EXISTS %b", key.c_str(), key.size()),
-                      freeRedisReply);
-  if (checkRedisReply(reply))
-    exit(1);
-  assert(reply->type == REDIS_REPLY_INTEGER);
-  return reply->integer;
-}
-
-
 int doPosition()
 {
   osl::record::CompactBoard cb;
@@ -140,18 +127,16 @@ int doPosition()
     return 1;
   }
 
-  if (exist(cb)) {
-    DLOG(INFO) << "Found an exisiting key (board)...";
-    SearchResult sr(cb);
-    if (!querySearchResult(c, sr)) {
-      if (sr.depth >= depth) {
-        DLOG(INFO) << "  do not override";
-        return 0;
-      }
-      DLOG(INFO) << "  will override";
+  SearchResult sr(cb);
+  /* Check the current (i.e. previous) result */
+  if (!querySearchResult(c, sr)) {
+    if (sr.depth >= depth) {
+      DLOG(INFO) << "Do not update the current search result.";
+      return 0;
     }
+    DLOG(INFO) << "Will update the current search result.";
   }
-
+  
   const osl::SimpleState state = cb.getState();
   
   {
@@ -161,7 +146,6 @@ int doPosition()
     LOG(INFO) << std::endl << oss.str();
   }
 
-  SearchResult sr(cb);
   sr.depth = depth;
   search(osl::NumEffectState(state), sr);
   setResult(sr);

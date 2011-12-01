@@ -34,7 +34,7 @@ int querySearchResult(redisContext *c, SearchResult& sr)
   assert(reply->type == REDIS_REPLY_ARRAY);
 
   if (reply->elements == 0) {
-    LOG(ERROR) << "Found a position without any fields";
+    LOG(ERROR) << "No existing board found.";
     return 1;
   }
 
@@ -83,7 +83,7 @@ int querySearchResult(redisContext *c, std::vector<SearchResult>& results)
     redisReplyPtr reply((redisReply*)r, freeRedisReply);
 
     if (reply->elements == 0) {
-      LOG(ERROR) << "Found a position without any fields";
+      LOG(ERROR) << "No existing board found.";
       continue;
     }
 

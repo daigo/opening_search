@@ -46,7 +46,7 @@ CC = $(CXX)
 PROGRAMS = $(PROGRAM_SRCS:.cc=)
 OSL_HOME_FLAGS = -DOSL_HOME=\"$(shell dirname `dirname \`pwd\``)/osl\"
 
-master: $(FILE_OSL_ALL) redis.o
+master: $(FILE_OSL_ALL) redis.o searchResult.o 
 
 client: $(FILE_OSL_ALL) redis.o searchResult.o
 

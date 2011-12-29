@@ -2,7 +2,7 @@
 
 # Master
 
-    $ ./master -v -f ../../data/joseki-dat \
+    $ ./master -v -f ../../../../gpsshogi/data/joseki.dat \
       --redis-host <host> --redis-port <port> --redis-password <password>
       -p black
 

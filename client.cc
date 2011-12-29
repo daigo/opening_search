@@ -62,9 +62,7 @@ void search(const osl::NumEffectState& src, SearchResult& sr)
   std::ostringstream out;
   if (move.move.isNormal()) {
     out << osl::record::csa::show(move.move);
-    for (size_t i=0; i<move.moves.size(); ++i) {
-      out << osl::record::csa::show(move.moves[i]);
-    }
+    out << movesToCsaString(move.moves);
   }
   sr.pv = out.str();
 }

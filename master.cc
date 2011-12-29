@@ -43,7 +43,7 @@ struct Node
 {
   int state_index;
   std::string state_key;
-  osl::MoveVector moves;
+  osl::stl::vector<osl::Move> moves;
 
   Node(int _state_index,
        const std::string& _state_key)
@@ -53,7 +53,7 @@ struct Node
 
   Node(int _state_index,
        const std::string& _state_key,
-       const osl::MoveVector& _moves)
+       const osl::stl::vector<osl::Move>& _moves)
     : state_index(_state_index),
       state_key(_state_key),
       moves(_moves)
@@ -70,7 +70,7 @@ const Node nextNode(const Node current_node,
                     int next_state_index,
                     const std::string& next_state_str,
                     const osl::Move move) {
-  osl::MoveVector moves = current_node.moves;
+  osl::stl::vector<osl::Move> moves = current_node.moves;
   moves.push_back(move);
   return Node(next_state_index, next_state_str, moves);
 }
@@ -81,7 +81,7 @@ const std::string getStateKey(const osl::SimpleState& state) {
   return compactBoardToString(cb);
 }
 
-const std::string getMovesStr(const osl::MoveVector& moves) {
+const std::string getMovesStr(const osl::stl::vector<osl::Move>& moves) {
   std::ostringstream ss;
   BOOST_FOREACH(const osl::Move move, moves) {
     osl::record::writeInt(ss, move.intValue());

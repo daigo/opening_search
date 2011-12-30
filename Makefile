@@ -46,11 +46,11 @@ CC = $(CXX)
 PROGRAMS = $(PROGRAM_SRCS:.cc=)
 OSL_HOME_FLAGS = -DOSL_HOME=\"$(shell dirname `dirname \`pwd\``)/osl\"
 
-master: $(FILE_OSL_ALL) redis.o searchResult.o 
+master: redis.o searchResult.o $(FILE_OSL_ALL) 
 
-client: $(FILE_OSL_ALL) redis.o searchResult.o
+client: redis.o searchResult.o $(FILE_OSL_ALL) 
 
-histogram: $(FILE_OSL_ALL) redis.o searchResult.o
+histogram: redis.o searchResult.o $(FILE_OSL_ALL) 
 
 clean: light-clean
 	-rm *.o $(PROGRAMS)

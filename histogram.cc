@@ -1,11 +1,13 @@
 #include "redis.h"
 #include "searchResult.h"
 #include "osl/record/compactBoard.h"
+#include "osl/record/kanjiPrint.h"
 #include "osl/state/simpleState.h"
 #include <hiredis/hiredis.h>
 #include <glog/logging.h>
 #include <boost/foreach.hpp>
 #include <boost/program_options.hpp>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -54,10 +56,13 @@ void getAllBoards(std::vector<osl::record::CompactBoard>& boards)
   }
 }
 
-void dump(std::ostream& out,
-          const std::vector<SearchResult>& results,
-          osl::Player player)
+void dump_score(const std::vector<SearchResult>& results, osl::Player player)
 {
+  const std::string file_name = "score_" + the_player_str + ".csv";
+  std::ofstream out(file_name.c_str(), std::ios_base::trunc);
+
+  DLOG(INFO) << "Writing to " << file_name << "...";
+
   /* Header */
   out << "EVAL" << std::endl;
 
@@ -66,8 +71,34 @@ void dump(std::ostream& out,
     const osl::SimpleState state = sr.board.getState();
     /* Filter results */
     if (sr.depth >= depth) {
-      DLOG(INFO) << sr.toString();
       out << sr.score << std::endl;
+    }
+  }  
+}
+
+void dump_position(const std::vector<SearchResult>& results, osl::Player player)
+{
+  const std::string file_name = "position_" + the_player_str + ".csv";
+  std::ofstream out(file_name.c_str(), std::ios_base::trunc);
+
+  DLOG(INFO) << "Writing to " << file_name << "...";
+
+  /* Rows */
+  BOOST_FOREACH(const SearchResult& sr, results) {
+    const osl::SimpleState state = sr.board.getState();
+    osl::Move last_move;
+    if (!sr.moves.empty())
+      last_move = sr.moves.back();
+
+    /* Filter results */
+    if (sr.depth >= depth) {
+      out << "score: " << sr.score << "\n" <<
+             stateToString(state, last_move) <<
+             "moves: " << movesToCsaString(sr.moves) << "\n" <<
+             "depth: " << sr.depth << "\n" <<
+             "secs:  " << sr.consumed_seconds << "\n" <<
+             "pv:    " << sr.pv << "\n" <<
+             std::endl;
     }
   }  
 }
@@ -88,9 +119,13 @@ void doMain()
     querySearchResult(c, results);
   }
 
-  const std::string file_name = "out_" + the_player_str + ".csv";
-  std::ofstream out(file_name.c_str(), std::ios_base::trunc);
-  dump(out, results, the_player);
+  if (the_player_str == "black")
+    std::sort(results.begin(), results.end(), SearchResultCompare());
+  else
+    std::sort(results.rbegin(), results.rend(), SearchResultCompare());
+
+  dump_score(results, the_player);
+  dump_position(results, the_player);
 }
 
 void printUsage(std::ostream& out, 

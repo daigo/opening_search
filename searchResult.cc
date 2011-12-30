@@ -1,6 +1,7 @@
 #include "searchResult.h"
 #include "redis.h"
 #include "osl/record/csa.h"
+#include "osl/record/kanjiPrint.h"
 #include "osl/record/record.h"
 #include <boost/foreach.hpp>
 #include <boost/lexical_cast.hpp>
@@ -30,7 +31,7 @@ const std::string compactBoardToString(const osl::record::CompactBoard& cb)
 }
 
 
-void readMoves(const std::string& binary, osl::stl::vector<osl::Move>& moves)
+void readMoves(const std::string& binary, moves_t& moves)
 {
   std::stringstream ss(binary);
   const int size = binary.size() / 4 /* 4 bytes per move */;
@@ -122,12 +123,26 @@ int querySearchResult(redisContext *c, std::vector<SearchResult>& results)
 }
 
 
-const std::string movesToCsaString(const osl::stl::vector<osl::Move>& moves)
+const std::string movesToCsaString(const moves_t& moves)
 {
   std::ostringstream out;
   BOOST_FOREACH(const osl::Move move, moves) {
     out << osl::record::csa::show(move);
   }
+  return out.str();
+}
+
+const std::string stateToString(const osl::SimpleState& state, const osl::Move last_move)
+{
+  std::ostringstream out;
+
+  //static const boost::shared_ptr<osl::record::KIFCharacters> characters(new osl::record::KIFCharacters());
+  osl::record::KanjiPrint printer(out);
+  printer.setBlackColor(osl::record::Color::Black);
+  printer.setWhiteColor(osl::record::Color::Blue);
+  printer.setLastMoveColor(osl::record::Color::Red);
+  printer.print(state, &last_move);
+
   return out.str();
 }
 

@@ -41,9 +41,11 @@ double ratio;		   // use moves[n+1] when the weight[n+1] >= ratio*weight[n]
 
 struct Node
 {
+  typedef osl::stl::vector<osl::Move> moves_t;
+
   int state_index;
   std::string state_key;
-  osl::stl::vector<osl::Move> moves;
+  moves_t moves;
 
   Node(int _state_index,
        const std::string& _state_key)
@@ -53,7 +55,7 @@ struct Node
 
   Node(int _state_index,
        const std::string& _state_key,
-       const osl::stl::vector<osl::Move>& _moves)
+       const moves_t& _moves)
     : state_index(_state_index),
       state_key(_state_key),
       moves(_moves)
@@ -70,7 +72,7 @@ const Node nextNode(const Node current_node,
                     int next_state_index,
                     const std::string& next_state_str,
                     const osl::Move move) {
-  osl::stl::vector<osl::Move> moves = current_node.moves;
+  moves_t moves = current_node.moves;
   moves.push_back(move);
   return Node(next_state_index, next_state_str, moves);
 }
@@ -81,7 +83,7 @@ const std::string getStateKey(const osl::SimpleState& state) {
   return compactBoardToString(cb);
 }
 
-const std::string getMovesStr(const osl::stl::vector<osl::Move>& moves) {
+const std::string getMovesStr(const Node::moves_t& moves) {
   std::ostringstream ss;
   BOOST_FOREACH(const osl::Move move, moves) {
     osl::record::writeInt(ss, move.intValue());
@@ -172,7 +174,7 @@ void doMain(const std::string& file_name) {
 
   while (!stateToVisit.empty()) {
     const Node node = stateToVisit.back();
-    LOG(INFO) << boost::format("Visiting... %d") % node.state_index;
+    DLOG(INFO) << boost::format("Visiting... %d") % node.state_index;
     stateToVisit.pop_back();
     states[node.state_index] = true;
 
@@ -214,7 +216,7 @@ void doMain(const std::string& file_name) {
       }
       moves.erase(each, moves.end());
     }
-    LOG(INFO) << boost::format("  #moves... %d\n") % moves.size();
+    DLOG(INFO) << boost::format("  #moves... %d\n") % moves.size();
     
     /* leaf nodes */
     if (moves.empty() || node.getDepth() > max_depth) {
@@ -243,7 +245,7 @@ void doMain(const std::string& file_name) {
   } // while loop
 
   /* check results */
-  LOG(INFO) << "Checkling processed positions...: " << counter/3;
+  LOG(INFO) << "Checking processed positions...: " << counter/3;
   for (int i=0; i<counter; ++i) {
     void *r;
     redisGetReply(c, &r);

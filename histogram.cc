@@ -1,7 +1,9 @@
 #include "redis.h"
 #include "searchResult.h"
 #include "osl/record/compactBoard.h"
+#include "osl/record/csa.h"
 #include "osl/record/kanjiPrint.h"
+#include "osl/record/ki2.h"
 #include "osl/state/simpleState.h"
 #include <hiredis/hiredis.h>
 #include <glog/logging.h>
@@ -85,21 +87,45 @@ void dump_position(const std::vector<SearchResult>& results, osl::Player player)
 
   /* Rows */
   BOOST_FOREACH(const SearchResult& sr, results) {
+    if (sr.depth < depth)
+      continue;
+
     const osl::SimpleState state = sr.board.getState();
+
     osl::Move last_move;
     if (!sr.moves.empty())
       last_move = sr.moves.back();
 
-    /* Filter results */
-    if (sr.depth >= depth) {
-      out << "score: " << sr.score << "\n" <<
-             stateToString(state, last_move) <<
-             "moves: " << movesToCsaString(sr.moves) << "\n" <<
-             "depth: " << sr.depth << "\n" <<
-             "secs:  " << sr.consumed_seconds << "\n" <<
-             "pv:    " << sr.pv << "\n" <<
-             std::endl;
+    /* parse pv */
+    std::vector<osl::Move> pv_moves;
+    {
+      osl::NumEffectState state(sr.board.getState());
+      for (size_t i=0; i<sr.pv.size(); ++i) {
+        if (sr.pv[i] == '+' || sr.pv[i] == '-' || sr.pv[i] == '%') {
+          for (size_t j=i+1; true; ++j) {
+            if (j == sr.pv.size() || sr.pv[j] == '+' || sr.pv[j] == '-' || sr.pv[j] == '%') {
+              const osl::Move move = osl::record::csa::strToMove(sr.pv.substr(i,(j-i)), state);
+              pv_moves.push_back(move);
+              state.makeMove(move);
+              i = j-1;
+              break;
+            }
+          } // for j
+        }
+      } // for i
     }
+    assert(!pv_moves.empty());
+
+    out << "score: " << sr.score << "\n" <<
+           stateToString(state, last_move) <<
+           "moves("<< sr.moves.size() << "): " <<
+                        osl::record::ki2::show(&*sr.moves.begin(), &*sr.moves.end(),
+                                               osl::NumEffectState()) << "\n" <<
+           "depth: " << sr.depth << "\n" <<
+           "secs:  " << sr.consumed_seconds << "\n" <<
+           "pv:    " << osl::record::ki2::show(&*pv_moves.begin(), &*pv_moves.end(),
+                                               osl::NumEffectState(state)) << "\n" <<
+           std::endl;
   }  
 }
 

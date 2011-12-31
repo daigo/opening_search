@@ -1,9 +1,16 @@
 args <- commandArgs(TRUE)
 file <- args[1]
+player <- args[2]
 
 print(file)
 
 d <- read.csv(file, header=T)
+
+if (player == "white") {
+  d$EVAL <- d$EVAL * -1
+  player <- "white with eval reversed"
+}
+
 sink(file="summary.txt", split=T)
 summary(d)
 sink()
@@ -15,13 +22,20 @@ close(con)
 
 png(sprintf("%s.png", file))
 
-hist(d$EVAL,
-     xlab="Eval")
+library(MASS)
+truehist(d$EVAL,
+         main=player,
+         xlab="Eval",
+         ylab="Frequency",
+         prob=FALSE,
+         h=50)
 
 for (i in 1:length(summary_text)) {
   str <- summary_text[[i]]
-  mtext(str, line=(-2-i),
+  mtext(str,
+        line=(-2-i),
         cex=.8,
+        adj=0,
         family="Monospace")
 }
 

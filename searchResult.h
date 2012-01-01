@@ -22,6 +22,7 @@ struct SearchResult {
       depth(0), score(0), consumed_seconds(0), timestamp(time(NULL))
   {}
 
+  const std::string timeString() const;
   const std::string toString() const;
 };
 

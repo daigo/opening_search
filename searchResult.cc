@@ -8,6 +8,15 @@
 #include <glog/logging.h>
 #include <iostream>
 #include <sstream>
+#include <ctime>
+
+const std::string
+SearchResult::timeString() const
+{
+  char buf[128] = {0};
+  ctime_r(&timestamp, buf);
+  return std::string(buf);
+}
 
 const std::string
 SearchResult::toString() const

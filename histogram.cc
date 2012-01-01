@@ -63,7 +63,8 @@ void dump_score(const std::vector<SearchResult>& results, osl::Player player)
   const std::string file_name = "score_" + the_player_str + ".csv";
   std::ofstream out(file_name.c_str(), std::ios_base::trunc);
 
-  DLOG(INFO) << "Writing to " << file_name << "...";
+  LOG(INFO) << "Writing to " << file_name << "...";
+  size_t missed = 0;
 
   /* Header */
   out << "EVAL" << std::endl;
@@ -74,8 +75,12 @@ void dump_score(const std::vector<SearchResult>& results, osl::Player player)
     /* Filter results */
     if (sr.depth >= depth) {
       out << sr.score << std::endl;
+    } else {
+      missed += 1;
     }
   }  
+
+  LOG(INFO) << "  misses: " << missed;
 }
 
 void dump_position(const std::vector<SearchResult>& results, osl::Player player)
@@ -83,12 +88,15 @@ void dump_position(const std::vector<SearchResult>& results, osl::Player player)
   const std::string file_name = "position_" + the_player_str + ".csv";
   std::ofstream out(file_name.c_str(), std::ios_base::trunc);
 
-  DLOG(INFO) << "Writing to " << file_name << "...";
+  LOG(INFO) << "Writing to " << file_name << "...";
+  size_t missed = 0;
 
   /* Rows */
   BOOST_FOREACH(const SearchResult& sr, results) {
-    if (sr.depth < depth)
+    if (sr.depth < depth) {
+      missed += 1;
       continue;
+    }
 
     const osl::SimpleState state = sr.board.getState();
 
@@ -125,8 +133,11 @@ void dump_position(const std::vector<SearchResult>& results, osl::Player player)
            "secs:  " << sr.consumed_seconds << "\n" <<
            "pv:    " << osl::record::ki2::show(&*pv_moves.begin(), &*pv_moves.end(),
                                                osl::NumEffectState(state)) << "\n" <<
+           "at:    " << sr.timeString() <<
            std::endl;
   }  
+
+  LOG(INFO) << "  misses: " << missed;
 }
 
 void doMain()

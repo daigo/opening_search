@@ -167,7 +167,12 @@ bool isStopFileExist()
 void doMain()
 {
   while (!isStopFileExist()) {
-    LOG(INFO) << ">>> Queue length: " << getQueueLength();
+    const int queue_length = getQueueLength();
+    LOG(INFO) << ">>> Queue length: " << queue_length;
+    if (queue_length == 0) {
+      break;
+    }
+
     if (doPosition())
       sleep(10);
   }
